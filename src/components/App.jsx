@@ -1,8 +1,23 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
+import { Auth } from 'aws-amplify';
+import Amplify from 'aws-amplify';
+
+Amplify.configure({
+	Auth: {
+		// REQUIRED - Amazon Cognito Identity Pool ID
+		identityPoolId: 'us-east-1:8aa80d16-dbed-4c5c-bd37-811ff00df62f',
+		// REQUIRED - Amazon Cognito Region
+		region: 'us-east-1',
+		// OPTIONAL - Amazon Cognito User Pool ID
+		userPoolId: 'us-east-1_sMVcwbzfj',
+		// OPTIONAL - Amazon Cognito Web Client ID (26-char alphanumeric string)
+		userPoolWebClientId: 'cutkv6l3b7ep3i4s3ki0iclas',
+	}
+});
 
 import { init } from '../utils/metronome';
-
+import { IoTDataPlaneClient, PublishCommand } from '@aws-sdk/client-iot-data-plane';
 import MeterControl from './MeterControl';
 import MeterDisplay from './MeterDisplay';
 import TempoDisplay from './TempoDisplay';
@@ -41,6 +56,42 @@ class App extends Component {
   createAppRef = _ => {
     this.app = _;
   };
+  
+   publishToIoTTopic = async (message) => {
+    const credentials = await Auth.currentCredentials();
+  
+    const client = new IoTDataPlaneClient({
+      region: "us-east-1",
+      credentials: {
+        accessKeyId: credentials.accessKeyId,
+        secretAccessKey: credentials.secretAccessKey,
+        sessionToken: credentials.sessionToken,
+      },
+    });
+  
+    const command = new PublishCommand({
+      topic: 'user/input',
+      payload: JSON.stringify(message),
+    });
+  
+    try {
+      const data = await client.send(command);
+      console.log("Data published successfully", data);
+    } catch (error) {
+      console.log("An error occurred", error);
+      const credentials = await Auth.currentCredentials();
+      console.log(credentials);
+    }
+  };
+
+  // Call the function when the metronome starts playing
+  handlePlayPause = () => {
+    this.props.togglePlayPause();
+    if (!this.props.isPlaying) {
+      this.publishToIoTTopic({ message: 'Metronome started playing' });
+    }
+  };
+  
 
   render() {
     const { isPlaying, meter, setMeter, setTempo, tempo, togglePlayPause } = this.props;
@@ -48,7 +99,7 @@ class App extends Component {
       <div className="App" ref={this.createAppRef}>
         <div className="top-controls-panel">
           <TempoDisplay tempo={tempo} />
-          <PlayPauseBtn isPlaying={isPlaying} handleClick={togglePlayPause} />
+          <PlayPauseBtn isPlaying={this.props.isPlaying} handleClick={this.handlePlayPause} />
         </div>
         <TempoSlider handleChange={setTempo} tempo={tempo} />
         <div className="meter-panel">
